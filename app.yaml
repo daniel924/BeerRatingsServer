@@ -1,13 +1,13 @@
-application: beer-rating
-version: 1
 runtime: python27
 api_version: 1
-threadsafe: true
+threadsafe: yes
 
 handlers:
 - url: .*
-  script: main.application
+  script: main.app
 
 libraries:
-- name: webob
-  version: "1.1.1"
+- name: jinja2
+  version: "2.6"
+- name: markupsafe
+  version: "0.15"
