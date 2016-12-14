@@ -1,8 +1,10 @@
+import datetime
 import re
 import urllib
 import urllib2
 
 from google.appengine.api import urlfetch
+from google.appengine.ext import ndb
 
 import webapp2
 
@@ -12,6 +14,13 @@ app.config['DEBUG'] = True
 
 # Note: We don't need to call run() since our application is embedded within
 # the App Engine WSGI application server.
+
+class Beer(ndb.Model):
+	id = ndb.StringProperty()
+	name = ndb.StringProperty()
+	baRating = ndb.StringProperty()
+	last_update = ndb.DateTimeProperty()
+
 
 def FetchPage(url):
 	page = None
@@ -36,20 +45,36 @@ def GetFirstMatch(html, pattern):
 def hello():
     """Return a friendly HTTP greeting."""
     return 'Hello World!'
-  
+ 
+ 
+@app.route('/reset')
+def reset():
+ 	"""Clear database."""
+ 	beers = Beer.query().fetch()
+ 	ndb.delete_multi([beer.key for beer in beers])
+ 	return 'Database Reset'
 
-@app.route('/beer/<beer>')
-def getBeer(beer):
+
+@app.route('/beer/<beer_name>')
+def getBeer(beer_name):
+	# First check cache for results.
+	import pdb; pdb.set_trace()
+
+	beers = Beer.query(Beer.name == beer_name).fetch()
+	if beers: return beers[0].baRating
+
 	baBaseUrl = 'http://www.beeradvocate.com'
 
-	search_url = baBaseUrl + '/search/?' + urllib.urlencode({'qt': 'beer', 'q': beer})
+	search_url = baBaseUrl + '/search/?' + urllib.urlencode({'qt': 'beer', 'q': beer_name})
 	page = FetchPage(search_url)
 	# Some sort of error, ideally we retry here or something.
 	if not page: return '0'
 
+	# This is the search landing page -- get page for beer.
 	beer_url = GetFirstMatch(page, '<a href="(/beer/profile/.*?)">')
 	if not beer_url: return '0'
 
+	# This is the page that contains the rating -- scrape it.
 	beer_url = baBaseUrl + beer_url
 	ratings_page = FetchPage(beer_url)
 	if not ratings_page: return
@@ -57,4 +82,7 @@ def getBeer(beer):
 	if not rating: return '0'
 	if rating == '-' or rating == '':
 		rating = '0'
+
+	# Cache results.
+	Beer(name=beer_name, baRating=rating, last_update=datetime.datetime.now()).put()
 	return rating
