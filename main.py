@@ -68,10 +68,14 @@ def isCached(beer_name):
 @app.route('/beer/<beer_name>')
 def getBeer(beer_name):
 	# First check cache for results.
-	beers = Beer.query(Beer.name == beer_name).fetch()
-	if beers:
+	cached_beers = Beer.query(Beer.name == beer_name).fetch()
+	if cached_beers:
 		#logger.log_text('Received call for %s, result is cached.' % beer_name) 
-		return beers[0].baRating
+		if cached_beers[0].last_update.date() == datetime.datetime.now().date():
+			return cached_beers[0].baRating
+		else:
+			cached_beers[0].key.delete()
+
 
 	#logger.log_text('Received call for %s, querying beeradvocate.' % beer_name) 
 	baBaseUrl = 'http://www.beeradvocate.com'
