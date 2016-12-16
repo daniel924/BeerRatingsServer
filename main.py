@@ -5,12 +5,16 @@ import urllib2
 
 from google.appengine.api import urlfetch
 from google.appengine.ext import ndb
+#from google.cloud import logging
 
 import webapp2
 
 from flask import Flask
 app = Flask(__name__)
 app.config['DEBUG'] = True
+
+#logging_client = logging.Client()
+#logger = logging_client.logger('log')
 
 # Note: We don't need to call run() since our application is embedded within
 # the App Engine WSGI application server.
@@ -46,7 +50,7 @@ def hello():
     """Return a friendly HTTP greeting."""
     return 'Hello World!'
  
- 
+
 @app.route('/reset')
 def reset():
  	"""Clear database."""
@@ -54,15 +58,22 @@ def reset():
  	ndb.delete_multi([beer.key for beer in beers])
  	return 'Database Reset'
 
+@app.route('/iscached/<beer_name>')
+def isCached(beer_name):
+	beers = Beer.query(Beer.name == beer_name).fetch()
+	if beers:
+		return 'true'
+	return 'false'
 
 @app.route('/beer/<beer_name>')
 def getBeer(beer_name):
 	# First check cache for results.
-	import pdb; pdb.set_trace()
-
 	beers = Beer.query(Beer.name == beer_name).fetch()
-	if beers: return beers[0].baRating
+	if beers:
+		#logger.log_text('Received call for %s, result is cached.' % beer_name) 
+		return beers[0].baRating
 
+	#logger.log_text('Received call for %s, querying beeradvocate.' % beer_name) 
 	baBaseUrl = 'http://www.beeradvocate.com'
 
 	search_url = baBaseUrl + '/search/?' + urllib.urlencode({'qt': 'beer', 'q': beer_name})
