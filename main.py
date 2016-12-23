@@ -1,4 +1,5 @@
 import datetime
+import json
 import re
 import urllib
 import urllib2
@@ -19,10 +20,19 @@ app.config['DEBUG'] = True
 # Note: We don't need to call run() since our application is embedded within
 # the App Engine WSGI application server.
 
+BEERMENUS_URL = 'https://www.beermenus.com'
+
 class Beer(ndb.Model):
 	id = ndb.StringProperty()
 	name = ndb.StringProperty()
 	baRating = ndb.StringProperty()
+	last_update = ndb.DateTimeProperty()
+
+class Place(ndb.Model):
+	id = ndb.StringProperty()
+	name = ndb.StringProperty()
+	url = ndb.StringProperty()
+	beers = ndb.StringProperty(repeated=True)
 	last_update = ndb.DateTimeProperty()
 
 
@@ -55,7 +65,9 @@ def hello():
 def reset():
  	"""Clear database."""
  	beers = Beer.query().fetch()
- 	ndb.delete_multi([beer.key for beer in beers])
+ 	ndb.delete_multi([b.key for b in beers])
+ 	places = Place.query().fetch()
+ 	ndb.delete_multi([p.key for p in places])
  	return 'Database Reset'
 
 @app.route('/iscached/<beer_name>')
@@ -64,6 +76,38 @@ def isCached(beer_name):
 	if beers:
 		return 'true'
 	return 'false'
+
+def IsFreshData(cached_result):
+	return cached_result.last_update.date() == datetime.datetime.now().date()
+
+
+@app.route('/place/<place>')
+def getBeersFromPlace(place):
+	# First check cache for results.
+	menu_url = None
+	cached_menu = Place.query(Place.name == place).fetch()
+	if cached_menu:
+		if IsFreshData(cached_menu[0]):
+			return json.dumps(cached_menu[0].beers)
+		else:
+			menu_url = cached_menu[0].url
+
+	if not menu_url:
+		search_url = BEERMENUS_URL + '/search?' + urllib.urlencode({'q': place})
+		page = FetchPage(search_url)
+		if not page: return
+		menu_url = GetFirstMatch(page, '<a href="(/places/.*?)">')
+
+	# Now that we have the place url, search for the beers.
+	beer_page = FetchPage(BEERMENUS_URL + menu_url)
+	beers = set()
+	for match in re.finditer('<a href="/beers/.*?">(.*)?</a>', beer_page):
+		beer = match.groups()[0]
+		# We check for the 'more' string because it can accidentally match the regex.
+		if beer != 'more': beers.add(beer)
+	Place(name=place, url=menu_url, beers=beers, last_update=datetime.datetime.now()).put()
+	return json.dumps(list(beers))
+
 
 @app.route('/beer/<beer_name>')
 def getBeer(beer_name):
