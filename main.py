@@ -180,7 +180,6 @@ def getBeerFromGoogle(beer_name):
 
 @app.route('/all/<place>')
 def getAll(place):
-	import pdb; pdb.set_trace()
 	beer_names = _getBeersFromPlace(place)
 	beers = []
 	for name in beer_names:
