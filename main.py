@@ -80,15 +80,14 @@ def isCached(beer_name):
 def IsFreshData(cached_result):
 	return cached_result.last_update.date() == datetime.datetime.now().date()
 
-
-@app.route('/place/<place>')
-def getBeersFromPlace(place):
+def _getBeersFromPlace(place):
 	# First check cache for results.
 	menu_url = None
 	cached_menu = Place.query(Place.name == place).fetch()
 	if cached_menu:
 		if IsFreshData(cached_menu[0]):
-			return json.dumps(cached_menu[0].beers)
+			print 'Returning cached menus'
+			return cached_menu[0].beers
 		else:
 			menu_url = cached_menu[0].url
 
@@ -103,10 +102,16 @@ def getBeersFromPlace(place):
 	beers = set()
 	for match in re.finditer('<a href="/beers/.*?">(.*)?</a>', beer_page):
 		beer = match.groups()[0]
-		# We check for the 'more' string because it can accidentally match the regex.
+		# We check for the 'more' string because it can accidentally match 
+		# the regex.
 		if beer != 'more': beers.add(beer)
-	Place(name=place, url=menu_url, beers=beers, last_update=datetime.datetime.now()).put()
-	return json.dumps(list(beers))
+	Place(name=place, url=menu_url, beers=beers, 
+		  last_update=datetime.datetime.now()).put()
+	return list(beers)
+
+@app.route('/place/<place>')
+def getBeersFromPlace(place):
+	return json.dumps(_getBeersFromPlace(place))
 
 @app.route('/beer2/<beer_name>')
 def getBeer(beer_name):
@@ -152,7 +157,7 @@ def getBeerFromGoogle(beer_name):
 	if cached_beers:
 		#logger.log_text('Received call for %s, result is cached.' % beer_name) 
 		if cached_beers[0].last_update.date() == datetime.datetime.now().date():
-			print 'Returning cached value'
+			print 'Returning cached beer rating'
 			return cached_beers[0].baRating
 		else:
 			cached_beers[0].key.delete()
@@ -162,7 +167,6 @@ def getBeerFromGoogle(beer_name):
 	page = FetchPage(search_url)
 	# Some sort of error, ideally we retry here or something.
 	if not page: return '0'
-
 
 	rating = GetFirstMatch(page, 'Rating: (.*?)&nbsp')
 	if not rating: return '0'
@@ -177,9 +181,9 @@ def getBeerFromGoogle(beer_name):
 @app.route('/all/<place>')
 def getAll(place):
 	import pdb; pdb.set_trace()
-	beer_names = json.loads(getBeersFromPlace(place))
+	beer_names = _getBeersFromPlace(place)
 	beers = []
 	for name in beer_names:
-		baRating = getBeer(name)
-		beers.add(Beer(name=name, baRating=baRating))
+		baRating = getBeerFromGoogle(name)
+		beers.append({'name': name, 'baRating': baRating})
 	return json.dumps(beers)
