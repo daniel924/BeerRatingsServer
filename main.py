@@ -108,8 +108,7 @@ def getBeersFromPlace(place):
 	Place(name=place, url=menu_url, beers=beers, last_update=datetime.datetime.now()).put()
 	return json.dumps(list(beers))
 
-
-@app.route('/beer/<beer_name>')
+@app.route('/beer2/<beer_name>')
 def getBeer(beer_name):
 	# First check cache for results.
 	cached_beers = Beer.query(Beer.name == beer_name).fetch()
@@ -145,3 +144,42 @@ def getBeer(beer_name):
 	# Cache results.
 	Beer(name=beer_name, baRating=rating, last_update=datetime.datetime.now()).put()
 	return rating
+
+@app.route('/beer/<beer_name>')
+def getBeerFromGoogle(beer_name):
+	# First check cache for results.
+	cached_beers = Beer.query(Beer.name == beer_name).fetch()
+	if cached_beers:
+		#logger.log_text('Received call for %s, result is cached.' % beer_name) 
+		if cached_beers[0].last_update.date() == datetime.datetime.now().date():
+			print 'Returning cached value'
+			return cached_beers[0].baRating
+		else:
+			cached_beers[0].key.delete()
+
+	google_base_url = 'http://www.google.com'
+	search_url = google_base_url + '/search?' + urllib.urlencode({'q': beer_name + ' site:beeradvocate.com'})
+	page = FetchPage(search_url)
+	# Some sort of error, ideally we retry here or something.
+	if not page: return '0'
+
+
+	rating = GetFirstMatch(page, 'Rating: (.*?)&nbsp')
+	if not rating: return '0'
+	if rating == '-' or rating == '':
+		rating = '0'
+
+	# Cache results.
+	Beer(name=beer_name, baRating=rating, last_update=datetime.datetime.now()).put()
+	return rating
+
+
+@app.route('/all/<place>')
+def getAll(place):
+	import pdb; pdb.set_trace()
+	beer_names = json.loads(getBeersFromPlace(place))
+	beers = []
+	for name in beer_names:
+		baRating = getBeer(name)
+		beers.add(Beer(name=name, baRating=baRating))
+	return json.dumps(beers)
