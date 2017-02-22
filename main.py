@@ -1,8 +1,10 @@
 import datetime
+import gzip
 import json
 import re
 import urllib
 import urllib2
+from StringIO import StringIO
 
 from google.appengine.api import urlfetch
 from google.appengine.ext import ndb
@@ -26,6 +28,7 @@ class Beer(ndb.Model):
 	id = ndb.StringProperty()
 	name = ndb.StringProperty()
 	baRating = ndb.StringProperty()
+	untpdRating = ndb.StringProperty()
 	last_update = ndb.DateTimeProperty()
 
 class Place(ndb.Model):
@@ -39,9 +42,17 @@ class Place(ndb.Model):
 def FetchPage(url):
 	page = None
 	try:
-		req = urllib2.Request(url, headers={'User-Agent' : "Magic Browser"})
-		con = urllib2.urlopen(req)
-		page = con.read()
+		# opener = urllib2.build_opener()
+		# opener.addheaders = [('User-agent', 'Mozilla/5.0')]
+		# response = opener.open('http://www.amazon.com/gp/offer-listing/0415376327%3FSubscriptionId%3DAKIAJZY2VTI5JQ66K7QQ%26tag%3Damaztest04-20%26linkCode%3Dxm2%26camp%3D2025%26creative%3D386001%26creativeASIN%3D0415376327')
+		# page = response.read()
+		req = urllib2.Request(url, headers={'User-Agent' : 'Mozilla/5.0', 'Accept-encoding': 'gzip'})
+		resp = urllib2.urlopen(req)
+		if resp.info().get('Content-Encoding') == 'gzip':
+			buf = StringIO(resp.read())
+			page = gzip.GzipFile(fileobj=buf).read()
+		else:
+			page = resp.read()
 	except urllib2.URLError as e:
 		raise e
 	return page
@@ -113,8 +124,10 @@ def _getBeersFromPlace(place):
 def getBeersFromPlace(place):
 	return json.dumps(_getBeersFromPlace(place))
 
-@app.route('/beer2/<beer_name>')
+
+@app.route('/beer/<beer_name>')
 def getBeer(beer_name):
+	print 'Fetching beer %s' % beer_name
 	# First check cache for results.
 	cached_beers = Beer.query(Beer.name == beer_name).fetch()
 	if cached_beers:
@@ -135,7 +148,9 @@ def getBeer(beer_name):
 
 	# This is the search landing page -- get page for beer.
 	beer_url = GetFirstMatch(page, '<a href="(/beer/profile/.*?)">')
-	if not beer_url: return '0'
+	# No beer was found. Try using Google as a backup.
+	if not beer_url: 
+		return getBeerFromGoogle(beer_name)
 
 	# This is the page that contains the rating -- scrape it.
 	beer_url = baBaseUrl + beer_url
@@ -150,7 +165,7 @@ def getBeer(beer_name):
 	Beer(name=beer_name, baRating=rating, last_update=datetime.datetime.now()).put()
 	return rating
 
-@app.route('/beer/<beer_name>')
+@app.route('/beergoogle/<beer_name>')
 def getBeerFromGoogle(beer_name):
 	# First check cache for results.
 	cached_beers = Beer.query(Beer.name == beer_name).fetch()
@@ -177,12 +192,20 @@ def getBeerFromGoogle(beer_name):
 	Beer(name=beer_name, baRating=rating, last_update=datetime.datetime.now()).put()
 	return rating
 
-
 @app.route('/all/<place>')
 def getAll(place):
 	beer_names = _getBeersFromPlace(place)
 	beers = []
 	for name in beer_names:
-		baRating = getBeerFromGoogle(name)
+		baRating = getBeer(name)
 		beers.append({'name': name, 'baRating': baRating})
 	return json.dumps(beers)
+
+
+
+
+
+
+
+
+
