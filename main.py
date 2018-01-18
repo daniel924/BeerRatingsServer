@@ -54,7 +54,8 @@ def FetchPage(url):
 		else:
 			page = resp.read()
 	except urllib2.URLError as e:
-		raise e
+		print 'URLError code %s' % e.code
+		return None
 	return page
 
 
@@ -179,7 +180,12 @@ def getBeerFromGoogle(beer_name):
 
 	google_base_url = 'http://www.google.com'
 	search_url = google_base_url + '/search?' + urllib.urlencode({'q': beer_name + ' site:beeradvocate.com'})
-	page = FetchPage(search_url)
+	
+	try:
+		page = FetchPage(search_url)
+	except urllib2.HttpError:
+		page = None  # Sometimes google throttles us, in which ase there is nothing we can do.
+
 	# Some sort of error, ideally we retry here or something.
 	if not page: return '0'
 
